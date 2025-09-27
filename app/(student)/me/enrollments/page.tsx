@@ -1,36 +1,38 @@
 // app/(student)/me/enrollments/page.tsx
-import { prisma } from "@/lib/db"
-import { auth } from "@/lib/auth"
-import { redirect } from "next/navigation"
-import { EnrollmentStatus } from "@prisma/client"
-import Link from "next/link"
+import { prisma } from "@/lib/db";
+import { auth } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import { EnrollmentStatus } from "@prisma/client";
+import Link from "next/link";
 
-export const dynamic = "force-dynamic"
+export const dynamic = "force-dynamic";
 
-const PER_PAGE = 10
+const PER_PAGE = 10;
 
 export default async function EnrollmentsPage({
   searchParams,
 }: {
-  searchParams?: Record<string, string | string[] | undefined>
+  searchParams?: Record<string, string | string[] | undefined>;
 }) {
-  const session = await auth()
-  if (!session?.user?.email) redirect("/login")
+  const session = await auth();
+  if (!session?.user?.email) redirect("/login");
 
   const me = await prisma.user.findUnique({
     where: { email: session.user.email! },
     select: { id: true },
-  })
-  if (!me) redirect("/login")
+  });
+  if (!me) redirect("/login");
 
   // filters
-  const q = (searchParams?.q as string)?.trim() ?? ""
-  const statusParam = ((searchParams?.status as string) ?? "all").toUpperCase()
+  const q = (searchParams?.q as string)?.trim() ?? "";
+  const statusParam = ((searchParams?.status as string) ?? "all").toUpperCase();
   const statusFilter =
-    statusParam === "ALL" ? undefined : (statusParam as keyof typeof EnrollmentStatus)
+    statusParam === "ALL"
+      ? undefined
+      : (statusParam as keyof typeof EnrollmentStatus);
 
-  const page = Math.max(1, parseInt((searchParams?.page as string) ?? "1", 10))
-  const skip = (page - 1) * PER_PAGE
+  const page = Math.max(1, parseInt((searchParams?.page as string) ?? "1", 10));
+  const skip = (page - 1) * PER_PAGE;
 
   // where clause
   const where: any = {
@@ -44,7 +46,7 @@ export default async function EnrollmentsPage({
           ],
         }
       : {}),
-  }
+  };
 
   const [total, rows] = await Promise.all([
     prisma.enrollment.count({ where }),
@@ -52,16 +54,22 @@ export default async function EnrollmentsPage({
       where,
       include: {
         course: {
-          select: { id: true, title: true, slug: true, thumbnail: true, price: true },
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            thumbnail: true,
+            price: true,
+          },
         },
       },
       orderBy: { createdAt: "desc" },
       take: PER_PAGE,
       skip,
     }),
-  ])
+  ]);
 
-  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE))
+  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
 
   return (
     <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-8 space-y-8">
@@ -80,15 +88,37 @@ export default async function EnrollmentsPage({
           {/* Filters */}
           <div className="mt-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-2">
-              <StatusTab label="ทั้งหมด" value="all" active={statusParam === "ALL"} />
-              <StatusTab label="กำลังใช้งาน" value="ACTIVE" active={statusParam === "ACTIVE"} />
-              <StatusTab label="เสร็จสมบูรณ์" value="COMPLETED" active={statusParam === "COMPLETED"} />
-              <StatusTab label="ยกเลิก" value="CANCELED" active={statusParam === "CANCELED"} />
+              <StatusTab
+                label="ทั้งหมด"
+                value="all"
+                active={statusParam === "ALL"}
+                q={q}
+              />
+              <StatusTab
+                label="กำลังใช้งาน"
+                value="ACTIVE"
+                active={statusParam === "ACTIVE"}
+                q={q}
+              />
+              <StatusTab
+                label="เสร็จสมบูรณ์"
+                value="COMPLETED"
+                active={statusParam === "COMPLETED"}
+                q={q}
+              />
+              <StatusTab
+                label="ยกเลิก"
+                value="CANCELED"
+                active={statusParam === "CANCELED"}
+                q={q}
+              />
             </div>
 
             <form className="w-full md:w-auto" action="/me/enrollments">
               {/* คงค่า status เดิม */}
-              {statusParam ? <input type="hidden" name="status" value={statusParam} /> : null}
+              {statusParam ? (
+                <input type="hidden" name="status" value={statusParam} />
+              ) : null}
               <input
                 className="w-full md:w-[280px] rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[--brand-navy]"
                 name="q"
@@ -136,8 +166,12 @@ export default async function EnrollmentsPage({
                     </div>
 
                     <div className="mt-1 text-sm text-slate-600">
-                      <span className="mr-3">รหัส: <span className="font-mono">ENR-{e.id}</span></span>
-                      <span className="mr-3">วันที่: {formatDate(e.createdAt)}</span>
+                      <span className="mr-3">
+                        รหัส: <span className="font-mono">ENR-{e.id}</span>
+                      </span>
+                      <span className="mr-3">
+                        วันที่: {formatDate(e.createdAt)}
+                      </span>
                       <span>ราคา: {formatTHB(e.course.price ?? 0)}</span>
                     </div>
 
@@ -147,7 +181,10 @@ export default async function EnrollmentsPage({
                         className="inline-flex items-center gap-2 rounded-lg bg-[--brand-navy] px-3 py-1.5 text-xs font-medium text-white hover:bg-[--brand-navy-2] transition"
                       >
                         เข้าเรียน
-                        <svg viewBox="0 0 20 20" className="size-4 fill-current">
+                        <svg
+                          viewBox="0 0 20 20"
+                          className="size-4 fill-current"
+                        >
                           <path d="M7.5 4.5 13 10l-5.5 5.5-1.06-1.06L10.88 10 6.44 5.56 7.5 4.5Z" />
                         </svg>
                       </Link>
@@ -172,14 +209,25 @@ export default async function EnrollmentsPage({
               หน้าที่ {page} จาก {totalPages} — ทั้งหมด {total} รายการ
             </div>
             <div className="flex items-center gap-2">
-              <PageBtn page={page - 1} disabled={page <= 1} q={q} status={statusParam} />
-              <PageBtn page={page + 1} disabled={page >= totalPages} q={q} status={statusParam} next />
+              <PageBtn
+                page={page - 1}
+                disabled={page <= 1}
+                q={q}
+                status={statusParam}
+              />
+              <PageBtn
+                page={page + 1}
+                disabled={page >= totalPages}
+                q={q}
+                status={statusParam}
+                next
+              />
             </div>
           </div>
         </div>
       )}
     </div>
-  )
+  );
 }
 
 /* ---------------- Components ---------------- */
@@ -188,12 +236,16 @@ function StatusTab({
   label,
   value,
   active,
+  q,
 }: {
-  label: string
-  value: string
-  active?: boolean
+  label: string;
+  value: string;
+  active?: boolean;
+  q?: string;
 }) {
-  const href = `/me/enrollments?status=${value}`
+  const href = `/me/enrollments?status=${value}${
+    q ? `&q=${encodeURIComponent(q)}` : ""
+  }`;
   return (
     <Link
       href={href}
@@ -206,16 +258,25 @@ function StatusTab({
     >
       {label}
     </Link>
-  )
+  );
 }
 
 function StatusBadge({ status }: { status: EnrollmentStatus }) {
   const map: Record<EnrollmentStatus, { text: string; cls: string }> = {
-    ACTIVE: { text: "กำลังใช้งาน", cls: "bg-blue-50 text-blue-700 border-blue-200" },
-    COMPLETED: { text: "เสร็จสมบูรณ์", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-    CANCELED: { text: "ยกเลิก", cls: "bg-rose-50 text-rose-700 border-rose-200" },
-  }
-  const m = map[status]
+    ACTIVE: {
+      text: "กำลังใช้งาน",
+      cls: "bg-blue-50 text-blue-700 border-blue-200",
+    },
+    COMPLETED: {
+      text: "เสร็จสมบูรณ์",
+      cls: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    },
+    CANCELED: {
+      text: "ยกเลิก",
+      cls: "bg-rose-50 text-rose-700 border-rose-200",
+    },
+  };
+  const m = map[status];
   return (
     <span
       className={[
@@ -227,7 +288,7 @@ function StatusBadge({ status }: { status: EnrollmentStatus }) {
       <i className="inline-block size-1.5 rounded-full bg-current opacity-70" />
       {m.text}
     </span>
-  )
+  );
 }
 
 function PageBtn({
@@ -237,13 +298,15 @@ function PageBtn({
   status,
   next = false,
 }: {
-  page: number
-  disabled?: boolean
-  q: string
-  status: string
-  next?: boolean
+  page: number;
+  disabled?: boolean;
+  q: string;
+  status: string;
+  next?: boolean;
 }) {
-  const href = `/me/enrollments?page=${page}&status=${status}${q ? `&q=${encodeURIComponent(q)}` : ""}`
+  const href = `/me/enrollments?page=${page}&status=${status}${
+    q ? `&q=${encodeURIComponent(q)}` : ""
+  }`;
   return disabled ? (
     <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-slate-400">
       {next ? "ถัดไป" : "ย้อนกลับ"}
@@ -255,7 +318,7 @@ function PageBtn({
     >
       {next ? "ถัดไป" : "ย้อนกลับ"}
     </Link>
-  )
+  );
 }
 
 function EmptyState() {
@@ -263,33 +326,45 @@ function EmptyState() {
     <div className="relative overflow-hidden rounded-[22px] border border-slate-200 bg-white">
       <div className="absolute inset-0 opacity-[.04] bg-[radial-gradient(900px_160px_at_50%_-40px,#192787,transparent)]" />
       <div className="relative px-8 py-16 text-center">
-        <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-xl bg-[--brand-navy]/10">🧾</div>
-        <h2 className="text-lg font-semibold text-[--brand-ink]">ยังไม่มีรายการลงทะเบียน</h2>
-        <p className="mt-1 text-slate-600">เมื่อคุณสั่งซื้อคอร์ส รายการจะปรากฏที่นี่</p>
+        <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-xl bg-[--brand-navy]/10">
+          🧾
+        </div>
+        <h2 className="text-lg font-semibold text-[--brand-ink]">
+          ยังไม่มีรายการลงทะเบียน
+        </h2>
+        <p className="mt-1 text-slate-600">
+          เมื่อคุณสั่งซื้อคอร์ส รายการจะปรากฏที่นี่
+        </p>
         <Link
           href="/courses"
           className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[--brand-navy] px-4 py-2.5 text-white hover:bg-[--brand-navy-2] transition"
         >
           ไปหน้าคอร์สทั้งหมด
-          <svg viewBox="0 0 20 20" className="size-4 fill-current"><path d="M7.5 4.5 13 10l-5.5 5.5-1.06-1.06L10.88 10 6.44 5.56 7.5 4.5Z"/></svg>
+          <svg viewBox="0 0 20 20" className="size-4 fill-current">
+            <path d="M7.5 4.5 13 10l-5.5 5.5-1.06-1.06L10.88 10 6.44 5.56 7.5 4.5Z" />
+          </svg>
         </Link>
       </div>
     </div>
-  )
+  );
 }
 
 /* ---------------- Utils ---------------- */
 function formatDate(d: Date) {
-  const dt = new Date(d)
+  const dt = new Date(d);
   return dt.toLocaleString("th-TH", {
     year: "numeric",
     month: "short",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-  })
+  });
 }
 
 function formatTHB(n: number) {
-  return n.toLocaleString("th-TH", { style: "currency", currency: "THB", maximumFractionDigits: 0 })
+  return n.toLocaleString("th-TH", {
+    style: "currency",
+    currency: "THB",
+    maximumFractionDigits: 0,
+  });
 }

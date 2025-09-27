@@ -4,52 +4,72 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/db";
 import { hash } from "bcryptjs";
-import fs from "node:fs/promises";
-import path from "node:path";
 
 type UpdateProfileInput = {
   name: string;
   phone?: string | null;
-  avatar: string | null;             // data URL หรือ URL
+  /** ส่งเฉพาะ URL ของรูป (มาจาก /api/upload หรือ URL ภายนอก) */
+  avatarUrl?: string | null;
+  /** ต่อไปนี้อัปเดตได้เฉพาะ ADMIN */
   memberId?: string | null;
-  cardIssuedAt?: string | null;      // "YYYY-MM-DD"
-  cardExpiredAt?: string | null;     // "YYYY-MM-DD"
+  cardIssuedAt?: string | null;   // "YYYY-MM-DD"
+  cardExpiredAt?: string | null;  // "YYYY-MM-DD"
 };
 
 export async function updateProfileAction(input: UpdateProfileInput) {
   try {
     const session = await getServerSession(authOptions);
-    const idStr = (session?.user as any)?.id;
-    const role = (session?.user as any)?.role;
-    if (!idStr) return { ok: false, message: "กรุณาเข้าสู่ระบบอีกครั้ง" };
-    const id = Number(idStr);
-    const isAdmin = role === "ADMIN";
+    const user = session?.user as any;
+    const id = Number(user?.id);
+    const role = String(user?.role || "");
+    if (!id) return { ok: false, message: "กรุณาเข้าสู่ระบบอีกครั้ง" };
 
-    let avatarUrl: string | null = null;
-    if (input.avatar && input.avatar.startsWith("data:image/")) {
-      const [, meta, base64] = input.avatar.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/) || [];
-      if (!base64) throw new Error("รูปภาพไม่ถูกต้อง");
-      const ext = (meta?.split("/")[1] || "png").toLowerCase().replace("+xml", "");
-      const fileName = `avatar-${id}-${Date.now()}.${ext}`;
-      const dir = path.join(process.cwd(), "public", "uploads", "avatars");
-      await fs.mkdir(dir, { recursive: true });
-      await fs.writeFile(path.join(dir, fileName), Buffer.from(base64, "base64"));
-      avatarUrl = `/uploads/avatars/${fileName}`;
-    } else if (input.avatar) {
-      avatarUrl = input.avatar;
+    // 🧹 sanitize / validate
+    const name = String(input.name ?? "").trim();
+    if (!name) return { ok: false, message: "กรุณากรอกชื่อที่แสดง" };
+    if (name.length > 100) return { ok: false, message: "ชื่อยาวเกินไป" };
+
+    const phone =
+      typeof input.phone === "undefined"
+        ? undefined
+        : (input.phone ? String(input.phone).trim() : null);
+
+    const avatarUrl =
+      typeof input.avatarUrl === "undefined"
+        ? undefined
+        : (input.avatarUrl ? String(input.avatarUrl).trim() : null);
+
+    // ❌ กันการส่ง data URL (base64) เข้ามาโดยตรง
+    if (avatarUrl && avatarUrl.startsWith("data:")) {
+      return {
+        ok: false,
+        message:
+          "ห้ามอัปโหลดรูปผ่านแบบฟอร์มโดยตรง กรุณาใช้ปุ่มอัปโหลดเพื่อรับลิงก์รูปภาพ",
+      };
     }
 
-    // สร้าง payload อัปเดตตามสิทธิ์
+    const isAdmin = role === "ADMIN";
+
     const data: any = {
-      name: input.name,
-      ...(typeof input.phone !== "undefined" ? { phone: input.phone } : {}),
-      ...(avatarUrl ? { avatarUrl } : {}),
+      name,
+      phone,         // undefined = ไม่แตะ, string|null = อัปเดต
+      avatarUrl,     // undefined = ไม่แตะ, string|null = อัปเดต
     };
 
     if (isAdmin) {
-      if (typeof input.memberId !== "undefined") data.memberId = input.memberId;
-      if (typeof input.cardIssuedAt !== "undefined") data.cardIssuedAt = input.cardIssuedAt ? new Date(input.cardIssuedAt) : null;
-      if (typeof input.cardExpiredAt !== "undefined") data.cardExpiredAt = input.cardExpiredAt ? new Date(input.cardExpiredAt) : null;
+      if (typeof input.memberId !== "undefined") {
+        data.memberId = input.memberId ? String(input.memberId).trim() : null;
+      }
+      if (typeof input.cardIssuedAt !== "undefined") {
+        data.cardIssuedAt = input.cardIssuedAt
+          ? new Date(input.cardIssuedAt)
+          : null;
+      }
+      if (typeof input.cardExpiredAt !== "undefined") {
+        data.cardExpiredAt = input.cardExpiredAt
+          ? new Date(input.cardExpiredAt)
+          : null;
+      }
     }
 
     await prisma.user.update({ where: { id }, data });
@@ -63,14 +83,17 @@ export async function updateProfileAction(input: UpdateProfileInput) {
 export async function updatePasswordAction(input: { newPassword: string }) {
   try {
     const session = await getServerSession(authOptions);
-    const idStr = (session?.user as any)?.id;
-    if (!idStr) return { ok: false, message: "กรุณาเข้าสู่ระบบอีกครั้ง" };
-    const id = Number(idStr);
+    const id = Number((session?.user as any)?.id);
+    if (!id) return { ok: false, message: "กรุณาเข้าสู่ระบบอีกครั้ง" };
 
+    const pwd = String(input.newPassword || "");
+    if (pwd.length < 8) return { ok: false, message: "รหัสผ่านอย่างน้อย 8 ตัวอักษร" };
+
+    const hashed = await hash(pwd, 10);
     await prisma.password.upsert({
       where: { userId: id },
-      update: { hash: await hash(input.newPassword, 10) },
-      create: { userId: id, hash: await hash(input.newPassword, 10) },
+      update: { hash: hashed },
+      create: { userId: id, hash: hashed },
     });
     return { ok: true };
   } catch (e: any) {

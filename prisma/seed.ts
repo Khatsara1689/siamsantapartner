@@ -1,19 +1,23 @@
-// prisma/seed.js
-const {
+// prisma/seed.ts
+import {
   PrismaClient,
   Role,
   ArticleStatus,
   EnrollmentStatus,
   OrderStatus,
-} = require("@prisma/client")
+} from "@prisma/client"
+import bcrypt from "bcryptjs"
 
 const prisma = new PrismaClient()
 
-async function main() {
-  console.log("🔥 Seeding minimal data...")
+function formatOrderCode() {
+  return `SSP-${Date.now()}`
+}
 
-  // ——— Optional: ล้างข้อมูลหลักก่อน (เฉพาะ dev) ———
-  // คอมเมนต์บรรทัดเหล่านี้ทิ้งถ้าไม่ต้องการลบข้อมูลเดิม
+async function main() {
+  console.log("🔥 Seeding minimal data (TS)...")
+
+  // --- ลบข้อมูลเดิม (เฉพาะ dev) ---
   await prisma.payment.deleteMany()
   await prisma.order.deleteMany()
   await prisma.progress.deleteMany()
@@ -47,7 +51,19 @@ async function main() {
     },
   })
 
-  // 2) Example Articles (เผื่อทดสอบหน้า Blog)
+  // 1.1) สร้างรหัสผ่าน (hash) สำหรับ login ด้วย Credentials Provider
+  const studentHash = await bcrypt.hash("123456", 10)
+  await prisma.password.create({
+    data: { userId: student.id, hash: studentHash },
+  })
+
+  // (ถ้าต้องการให้ admin login ได้ด้วย)
+  const adminHash = await bcrypt.hash("123456", 10)
+  await prisma.password.create({
+    data: { userId: admin.id, hash: adminHash },
+  })
+
+  // 2) Article ตัวอย่าง
   await prisma.article.create({
     data: {
       slug: "welcome-to-siamsanta-partner",
@@ -91,7 +107,6 @@ async function main() {
                   order: 2,
                   freePreview: false,
                   content: "อธิบายเส้นทางโดยรวม",
-                  videoUrl: null,
                 },
               ],
             },
@@ -106,14 +121,12 @@ async function main() {
                   order: 1,
                   freePreview: false,
                   content: "รายการเอกสารและคำแนะนำ",
-                  videoUrl: null,
                 },
                 {
                   title: "สิ่งของที่ควรเตรียม",
                   order: 2,
                   freePreview: false,
                   content: "รายการของจำเป็น",
-                  videoUrl: null,
                 },
               ],
             },
@@ -126,12 +139,13 @@ async function main() {
     },
   })
 
-  const courseB = await prisma.course.create({
+  await prisma.course.create({
     data: {
       slug: "japan-private-premium",
       title: "เที่ยวญี่ปุ่นส่วนตัว – PREMIUM",
       subtitle: "ประสบการณ์สุดพรีเมียม",
-      description: "คอร์สตัวอย่างลำดับที่สองสำหรับทดสอบ Grid และหน้า enrollments",
+      description:
+        "คอร์สตัวอย่างลำดับที่สองสำหรับทดสอบ Grid และหน้า enrollments",
       thumbnail:
         "https://images.unsplash.com/photo-1549692520-acc6669e2f0c?w=1200&q=80&auto=format&fit=crop",
       isPublished: true,
@@ -165,7 +179,7 @@ async function main() {
   // 5) Order (PAID) + Payment และผูกกับ Enrollment
   const order = await prisma.order.create({
     data: {
-      code: `SSP-${Date.now()}`,
+      code: formatOrderCode(),
       userId: student.id,
       amount: courseA.price,
       status: OrderStatus.PAID,
@@ -179,8 +193,8 @@ async function main() {
     data: {
       orderId: order.id,
       amount: courseA.price,
-      method: "qr", // "card" | "qr" | "transfer"
-      status: "succeeded",
+      method: "qr",            // "card" | "qr" | "transfer"
+      status: "succeeded",     // "succeeded" | "failed" | "pending"
       providerRef: "mock_payment_001",
     },
   })
@@ -191,15 +205,10 @@ async function main() {
   })
 
   // 6) Progress (ติ๊กบทแรกให้สำเร็จ)
-  const firstLessonId =
-    courseA.sections[0]?.lessons?.[0]?.id ?? null
+  const firstLessonId = courseA.sections?.[0]?.lessons?.[0]?.id ?? null
   if (firstLessonId) {
     await prisma.progress.create({
-      data: {
-        userId: student.id,
-        lessonId: firstLessonId,
-        isDone: true,
-      },
+      data: { userId: student.id, lessonId: firstLessonId, isDone: true },
     })
   }
 

@@ -139,7 +139,7 @@ model Enrollment {
   courseId  Int
   createdAt DateTime         @default(now())
 
-  // ผูกกับ Order (optional) — ถ้า Order ถูกลบ ให้เซ็ตเป็น NULL
+  
   order   Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
   orderId Int?
 

@@ -65,16 +65,10 @@ export default function ProfileView({ me, stats }: { me: Me; stats: Stats }) {
             {/* Tabs */}
             <div className="px-6 md:px-8 border-t bg-white">
               <div className="flex gap-4">
-                <TabButton
-                  active={tab === "profile"}
-                  onClick={() => setTab("profile")}
-                >
+                <TabButton active={tab === "profile"} onClick={() => setTab("profile")}>
                   โปรไฟล์
                 </TabButton>
-                <TabButton
-                  active={tab === "security"}
-                  onClick={() => setTab("security")}
-                >
+                <TabButton active={tab === "security"} onClick={() => setTab("security")}>
                   ความปลอดภัย
                 </TabButton>
               </div>
@@ -131,11 +125,7 @@ function RoleBadge({ role }: { role: "ADMIN" | "STUDENT" }) {
   return (
     <div className="ml-auto">
       <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-        <span
-          className={`w-2 h-2 rounded-full ${
-            role === "ADMIN" ? "bg-emerald-500" : "bg-blue-500"
-          }`}
-        />
+        <span className={`w-2 h-2 rounded-full ${role === "ADMIN" ? "bg-emerald-500" : "bg-blue-500"}`} />
         {label}
       </span>
     </div>
@@ -154,9 +144,7 @@ function TabButton({
     <button
       onClick={onClick}
       className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition ${
-        active
-          ? "border-[var(--brand-orange)] text-[var(--brand-orange)]"
-          : "border-transparent text-slate-500 hover:text-slate-700"
+        active ? "border-[var(--brand-orange)] text-[var(--brand-orange)]" : "border-transparent text-slate-500 hover:text-slate-700"
       }`}
     >
       {children}
@@ -172,19 +160,9 @@ function ProfileForm({ me }: { me: Me }) {
   const [name, setName] = useState(me.name ?? "");
   const [avatarUrlInput, setAvatarUrlInput] = useState(me.avatarUrl ?? "");
   const [phone, setPhone] = useState<string>(me.phone ?? "");
-  const [memberId, setMemberId] = useState<string>(
-    me.memberId ?? `ONLINE-NP${String(me.id).padStart(6, "0")}`
-  );
-  const [issuedAt, setIssuedAt] = useState<string>(
-    me.cardIssuedAt
-      ? new Date(me.cardIssuedAt as any).toISOString().slice(0, 10)
-      : ""
-  );
-  const [expiredAt, setExpiredAt] = useState<string>(
-    me.cardExpiredAt
-      ? new Date(me.cardExpiredAt as any).toISOString().slice(0, 10)
-      : ""
-  );
+  const [memberId, setMemberId] = useState<string>(me.memberId ?? `ONLINE-NP${String(me.id).padStart(6, "0")}`);
+  const [issuedAt, setIssuedAt] = useState<string>(me.cardIssuedAt ? new Date(me.cardIssuedAt as any).toISOString().slice(0, 10) : "");
+  const [expiredAt, setExpiredAt] = useState<string>(me.cardExpiredAt ? new Date(me.cardExpiredAt as any).toISOString().slice(0, 10) : "");
 
   const [saving, start] = useTransition();
   const [ok, setOk] = useState<string | null>(null);
@@ -192,39 +170,54 @@ function ProfileForm({ me }: { me: Me }) {
 
   // upload preview
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [avatarPreview, setAvatarPreview] = useState<string>(
-    me.avatarUrl ?? ""
-  );
+  const [avatarPreview, setAvatarPreview] = useState<string>(me.avatarUrl ?? "");
+  const [uploading, setUploading] = useState(false);
+
   useEffect(() => {
     if (!avatarFile) return;
     const objUrl = URL.createObjectURL(avatarFile);
     setAvatarPreview(objUrl);
     return () => URL.revokeObjectURL(objUrl);
   }, [avatarFile]);
+
   useEffect(() => {
     if (!avatarFile) setAvatarPreview(avatarUrlInput || "");
   }, [avatarUrlInput, avatarFile]);
 
-  async function fileToDataUrl(file: File): Promise<string> {
-    return await new Promise((resolve, reject) => {
-      const fr = new FileReader();
-      fr.onload = () => resolve(String(fr.result));
-      fr.onerror = reject;
-      fr.readAsDataURL(file);
-    });
+  async function uploadAvatar(file: File) {
+    const ALLOWED = ["image/jpeg", "image/png", "image/webp"];
+    const MAX = 5 * 1024 * 1024; // 5MB
+    if (!ALLOWED.includes(file.type)) {
+      alert("อนุญาตเฉพาะ JPG/PNG/WebP");
+      return;
+    }
+    if (file.size > MAX) {
+      alert("ไฟล์ใหญ่เกิน 5MB");
+      return;
+    }
+    const fd = new FormData();
+    fd.append("file", file);
+    setUploading(true);
+    const res = await fetch("/api/upload", { method: "POST", body: fd });
+    setUploading(false);
+    const json = await res.json();
+    if (!res.ok) {
+      alert(json?.error || "อัปโหลดไม่สำเร็จ");
+      return;
+    }
+    setAvatarUrlInput(json.url);
+    setAvatarPreview(json.url);
   }
 
   const onSave = () => {
     setOk(null);
     setErr(null);
     start(async () => {
-      const avatarDataUrl = avatarFile ? await fileToDataUrl(avatarFile) : null;
-
-      // ถ้าไม่ใช่ Admin → ไม่ส่งฟิลด์ที่ควบคุมโดยแอดมิน
       const payload: any = {
         name,
         phone: phone || null,
-        avatar: avatarDataUrl ?? (avatarUrlInput || null),
+        // ✅ ส่งเฉพาะ URL ไม่ส่ง data URL/base64
+        avatarUrl: avatarUrlInput || null,
       };
       if (isAdmin) {
         payload.memberId = memberId;
@@ -233,7 +226,6 @@ function ProfileForm({ me }: { me: Me }) {
       }
 
       const res = await updateProfileAction(payload);
-
       if (res.ok) {
         setOk("บันทึกโปรไฟล์เรียบร้อย ✅");
         router.refresh();
@@ -244,62 +236,79 @@ function ProfileForm({ me }: { me: Me }) {
   };
 
   return (
-  <div className="space-y-4 md:space-y-6">
-    {/* แถวอัปโหลดรูป (อยู่นอกกริด) */}
-    <div className="flex items-center gap-4">
-      <div className="relative w-16 h-16 rounded-full overflow-hidden bg-slate-200 shrink-0">
-        {avatarPreview ? <Image src={avatarPreview} alt="avatar" fill className="object-cover" /> : null}
-      </div>
-      <label className="inline-flex items-center gap-2 text-sm font-medium cursor-pointer">
-        <input type="file" accept="image/*" onChange={(e)=>setAvatarFile(e.target.files?.[0] ?? null)} className="hidden" />
-        <span className="rounded-lg border px-3 py-2 hover:bg-gray-50">เลือกรูปจากเครื่อง</span>
-        <span className="text-xs text-slate-500">(PNG/JPG ≤ 5MB)</span>
-      </label>
-    </div>
-
-    {/* กริด 2 คอลัมน์: ซ้าย (ฟอร์มถึงวันหมดอายุ) + ขวา (การ์ด) */}
-    <div className="grid md:grid-cols-2 gap-6 items-stretch">
-      <div className="space-y-4">
-        <FloatingInput label="ลิงก์รูปโปรไฟล์ (URL)" value={avatarUrlInput} onChange={setAvatarUrlInput} placeholder="https://..." />
-        <FloatingInput label="ชื่อที่แสดง" value={name} onChange={setName} placeholder="ชื่อ-นามสกุล" />
-        <FloatingInput label="เบอร์โทร" value={phone} onChange={setPhone} placeholder="เช่น 0891234567" type="tel" />
-        <FloatingInput label="รหัสนักเรียน (ID)" value={memberId} onChange={setMemberId}
-          placeholder="เช่น ONLINE-NP000123" disabled={!isAdmin}
-          hint={!isAdmin ? "แก้ไขได้เฉพาะผู้ดูแลระบบ" : undefined}
-        />
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <FloatingInput label="วันออกบัตร" type="date" value={issuedAt} onChange={setIssuedAt} disabled={!isAdmin} />
-          <FloatingInput label="วันหมดอายุ" type="date" value={expiredAt} onChange={setExpiredAt} disabled={!isAdmin} />
+    <div className="space-y-4 md:space-y-6">
+      {/* อัปโหลดรูป */}
+      <div className="flex items-center gap-4">
+        <div className="relative w-16 h-16 rounded-full overflow-hidden bg-slate-200 shrink-0">
+          {avatarPreview ? <Image src={avatarPreview} alt="avatar" fill className="object-cover" /> : null}
         </div>
+        <label className="inline-flex items-center gap-2 text-sm font-medium cursor-pointer">
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => {
+              const f = e.target.files?.[0] ?? null;
+              setAvatarFile(f);
+              if (f) uploadAvatar(f);
+            }}
+            className="hidden"
+          />
+          <span className="rounded-lg border px-3 py-2 hover:bg-gray-50">
+            {uploading ? "กำลังอัปโหลด..." : "เลือกรูปจากเครื่อง"}
+          </span>
+          <span className="text-xs text-slate-500">(JPG/PNG/WebP ≤ 5MB)</span>
+        </label>
       </div>
 
-      {/* การ์ดสูงเท่าคอลัมน์ซ้าย */}
-      <StudentCardPreview
-        className="h-full"
-        avatarPreview={avatarPreview}
-        name={name || "ชื่อที่แสดง"}
-        email={me.email || "-"}
-        phone={phone || "กรอกเบอร์โทร"}
-        memberId={memberId || "-"}
-        issuedAt={issuedAt}
-        expiredAt={expiredAt}
-      />
-    </div>
+      <div className="grid md:grid-cols-2 gap-6 items-stretch">
+        <div className="space-y-4">
+          <FloatingInput
+            label="ลิงก์รูปโปรไฟล์ (URL)"
+            value={avatarUrlInput}
+            onChange={setAvatarUrlInput}
+            placeholder="https://..."
+          />
+          <FloatingInput label="ชื่อที่แสดง" value={name} onChange={setName} placeholder="ชื่อ-นามสกุล" />
+          <FloatingInput label="เบอร์โทร" value={phone} onChange={setPhone} placeholder="เช่น 0891234567" type="tel" />
+          <FloatingInput
+            label="รหัสนักเรียน (ID)"
+            value={memberId}
+            onChange={setMemberId}
+            placeholder="เช่น ONLINE-NP000123"
+            disabled={!isAdmin}
+            hint={!isAdmin ? "แก้ไขได้เฉพาะผู้ดูแลระบบ" : undefined}
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FloatingInput label="วันออกบัตร" type="date" value={issuedAt} onChange={setIssuedAt} disabled={!isAdmin} />
+            <FloatingInput label="วันหมดอายุ" type="date" value={expiredAt} onChange={setExpiredAt} disabled={!isAdmin} />
+          </div>
+        </div>
 
-    {/* ปุ่มบันทึก + ข้อความ (อยู่นอกกริด) */}
-    <div className="pt-1">
-      <button
-        onClick={onSave}
-        disabled={saving}
-        className="inline-flex items-center justify-center rounded-xl bg-[var(--brand-orange)] text-white px-5 py-2.5 font-semibold disabled:opacity-60 hover:opacity-90 transition"
-      >
-        {saving ? "กำลังบันทึก..." : "บันทึก"}
-      </button>
-      {ok && <p className="text-emerald-600 text-sm mt-2">{ok}</p>}
-      {err && <p className="text-red-600 text-sm mt-2">{err}</p>}
+        <StudentCardPreview
+          className="h-full"
+          avatarPreview={avatarPreview}
+          name={name || "ชื่อที่แสดง"}
+          email={me.email || "-"}
+          phone={phone || "กรอกเบอร์โทร"}
+          memberId={memberId || "-"}
+          issuedAt={issuedAt}
+          expiredAt={expiredAt}
+        />
+      </div>
+
+      <div className="pt-1">
+        <button
+          onClick={onSave}
+          disabled={saving}
+          className="inline-flex items-center justify-center rounded-xl bg-[var(--brand-orange)] text-white px-5 py-2.5 font-semibold disabled:opacity-60 hover:opacity-90 transition"
+        >
+          {saving ? "กำลังบันทึก..." : "บันทึก"}
+        </button>
+        {ok && <p className="text-emerald-600 text-sm mt-2">{ok}</p>}
+        {err && <p className="text-red-600 text-sm mt-2">{err}</p>}
+      </div>
     </div>
-  </div>
-);
+  );
 }
 
 /* ---------- Security ---------- */
@@ -315,9 +324,7 @@ function SecurityForm() {
     if (pass1 !== pass2) return setMsg("รหัสผ่านไม่ตรงกัน");
     start(async () => {
       const res = await updatePasswordAction({ newPassword: pass1 });
-      setMsg(
-        res.ok ? "อัปเดตรหัสผ่านแล้ว ✅" : res.message || "อัปเดตไม่สำเร็จ"
-      );
+      setMsg(res.ok ? "อัปเดตรหัสผ่านแล้ว ✅" : res.message || "อัปเดตไม่สำเร็จ");
       setPass1("");
       setPass2("");
     });
@@ -325,20 +332,8 @@ function SecurityForm() {
 
   return (
     <div className="max-w-lg space-y-4">
-      <FloatingInput
-        label="รหัสผ่านใหม่"
-        type="password"
-        value={pass1}
-        onChange={setPass1}
-        placeholder="อย่างน้อย 8 ตัวอักษร"
-      />
-      <FloatingInput
-        label="ยืนยันรหัสผ่านใหม่"
-        type="password"
-        value={pass2}
-        onChange={setPass2}
-        placeholder="พิมพ์ซ้ำอีกครั้ง"
-      />
+      <FloatingInput label="รหัสผ่านใหม่" type="password" value={pass1} onChange={setPass1} placeholder="อย่างน้อย 8 ตัวอักษร" />
+      <FloatingInput label="ยืนยันรหัสผ่านใหม่" type="password" value={pass2} onChange={setPass2} placeholder="พิมพ์ซ้ำอีกครั้ง" />
       <button
         onClick={onSave}
         disabled={saving}
@@ -384,9 +379,7 @@ function FloatingInput({
       />
       <span
         className={`pointer-events-none absolute left-3 px-1 bg-white text-xs transition-all ${
-          active
-            ? "-top-2 text-[var(--brand-orange)]"
-            : "top-3.5 text-slate-400"
+          active ? "-top-2 text-[var(--brand-orange)]" : "top-3.5 text-slate-400"
         }`}
       >
         {label}
@@ -420,31 +413,23 @@ function StudentCardPreview({
     <div
       className={[
         "relative rounded-2xl border border-slate-300 bg-white shadow-[0_6px_24px_rgba(2,6,23,0.08)]",
-        "overflow-hidden flex flex-col", // ให้ยืดสูง
+        "overflow-hidden flex flex-col",
         className || "",
       ].join(" ")}
     >
-      {/* Header เหลืองแบบการ์ดตัวอย่าง */}
       <div className="bg-[#F4C542] px-6 py-3">
         <h3 className="text-[20px] md:text-[22px] font-extrabold tracking-wide text-slate-900 uppercase">
           STUDENT CARD
         </h3>
       </div>
 
-      {/* เนื้อการ์ด */}
       <div className="flex-1 p-6">
         <div className="grid grid-cols-[104px_12px_1fr] gap-5">
-          {/* กล่องรูปโปรไฟล์แบบมุมโค้ง + ขอบอ่อน */}
           <div className="col-span-1">
             <div className="rounded-[18px] border-2 border-slate-200 bg-slate-50 p-2 shadow-sm w-[120px] h-[120px]">
               <div className="relative w-full h-full rounded-[12px] overflow-hidden bg-white">
                 {avatarPreview ? (
-                  <Image
-                    src={avatarPreview}
-                    alt="avatar"
-                    fill
-                    className="object-cover"
-                  />
+                  <Image src={avatarPreview} alt="avatar" fill className="object-cover" />
                 ) : (
                   <div className="w-full h-full grid place-items-center text-slate-400 text-xs">
                     NO PHOTO
@@ -454,10 +439,8 @@ function StudentCardPreview({
             </div>
           </div>
 
-          {/* คอลัมน์เครื่องหมาย : */}
           <div className="col-span-1"></div>
 
-          {/* ข้อมูล */}
           <div className="col-span-1 space-y-1.5 text-[15px] leading-7">
             <Row k="Name" v={name} strong />
             <Row k="ID" v={memberId} />
@@ -472,34 +455,17 @@ function StudentCardPreview({
   );
 }
 
-function Row({
-  k,
-  v,
-  strong = false,
-}: {
-  k: string;
-  v: string;
-  strong?: boolean;
-}) {
+function Row({ k, v, strong = false }: { k: string; v: string; strong?: boolean }) {
   return (
     <div className="grid grid-cols-[96px_12px_1fr]">
       <div className="text-slate-600">{k}</div>
       <div className="text-slate-700">:</div>
-      <div
-        className={
-          strong
-            ? "font-extrabold text-slate-900"
-            : "font-semibold text-slate-800"
-        }
-      >
-        {v}
-      </div>
+      <div className={strong ? "font-extrabold text-slate-900" : "font-semibold text-slate-800"}>{v}</div>
     </div>
   );
 }
 
 function formatDate(isoLike: string) {
-  // "YYYY-MM-DD" → "DD-MM-YYYY"
   const [y, m, d] = isoLike.split("-");
   return `${d}-${m}-${y}`;
 }
