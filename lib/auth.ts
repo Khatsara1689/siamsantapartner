@@ -1,35 +1,51 @@
-// lib/auth.ts
-import NextAuth, { NextAuthOptions } from "next-auth";
-import Credentials from "next-auth/providers/credentials";
-import { PrismaAdapter } from "@next-auth/prisma-adapter";
-import { prisma } from "./db";
-import bcrypt from "bcrypt";
+import NextAuth, { type NextAuthOptions } from "next-auth"
+import Credentials from "next-auth/providers/credentials"
+import { prisma } from "@/lib/db"
+import bcrypt from "bcrypt"
+import { getServerSession } from "next-auth"
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
-  session: { strategy: "database" }, // หรือ "jwt" ก็ได้ตามต้องการ
+  session: { strategy: "jwt" },
   providers: [
     Credentials({
-      name: "Credentials",
+      name: "credentials",
       credentials: {
-        email: { label: "Email", type: "email" },
+        email: { label: "Email", type: "text" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(creds) {
-        if (!creds?.email || !creds.password) return null;
-        const user = await prisma.user.findUnique({ where: { email: creds.email } });
-        if (!user?.passwordHash) return null;
-        const ok = await bcrypt.compare(creds.password, user.passwordHash);
-        if (!ok) return null;
-        return { id: user.id, name: user.name, email: user.email, image: user.image ?? undefined };
+      authorize: async (creds) => {
+        if (!creds?.email || !creds?.password) return null
+        const user = await prisma.user.findUnique({ where: { email: creds.email } })
+        if (!user || !user.password) return null
+        const ok = await bcrypt.compare(creds.password, user.password)
+        if (!ok) return null
+        return {
+          id: String(user.id),
+          name: user.name,
+          email: user.email,
+          // @ts-ignore - Prisma enum
+          role: user.role,
+        }
       },
     }),
-    // เพิ่ม Google/GitHub ฯลฯ ได้ตามต้องการ
   ],
-  pages: {
-    signIn: "/signin",
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user) token.role = (user as any).role
+      return token
+    },
+    async session({ session, token }) {
+      if (token?.role) (session.user as any).role = token.role
+      // แนบ id ด้วยถ้าต้องใช้
+      if ((token as any)?.sub) (session.user as any).id = (token as any).sub
+      return session
+    },
   },
-  // สำหรับ JWT (ถ้าใช้ strategy:"jwt") สามารถกำหนด callbacks ได้
-};
+}
 
-export const { handlers, auth, signIn, signOut } = NextAuth(authOptions);
+// v4: ไม่มี { handlers, auth } ให้ export
+// สร้าง handler ไว้ให้ route.ts ไป export GET/POST
+export const nextAuthHandler = NextAuth(authOptions)
+
+// helper ใช้ใน Server Component/Route แทน `auth()` ของ v5
+export const auth = () => getServerSession(authOptions)

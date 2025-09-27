@@ -23,6 +23,7 @@
   /* ตัวหนังสือเข้ม */
   --brand-muted: #cfd3dc;
   /* เส้นใต้ลิงก์ขาวเทา */
+  --card-grad: linear-gradient(145deg, rgba(15,33,103,.06), rgba(255,140,50,.06));
 }
 
 html,
@@ -61,4 +62,11 @@ body {
     animation: none !important;
     transition: none !important;
   }
+}
+
+body{ color:var(--brand-ink); }
+.card {
+  background: var(--card-grad);
+  border: 1px solid rgb(226 232 240 / .6);
+  box-shadow: 0 10px 24px rgba(15,33,103,.06);
 }

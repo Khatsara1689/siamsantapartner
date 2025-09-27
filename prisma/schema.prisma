@@ -1,60 +1,249 @@
-// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "mysql"   // ใช้กับ MySQL และ MariaDB
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
-/* ---- โมเดลสำหรับ NextAuth v4 ---- */
+/**
+ * ===== Enums หลัก =====
+ */
+enum Role {
+  ADMIN
+  STUDENT
+}
+
+enum ArticleStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  CANCELED
+  COMPLETED
+}
+
+enum FranchiseStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELED
+  REFUNDED
+}
+
+/**
+ * ===== Models หลัก =====
+ */
 model User {
-  id            String   @id @default(cuid())
-  name          String?
-  email         String?  @unique
-  emailVerified DateTime?
-  image         String?
-  passwordHash  String?
+  id            Int       @id @default(autoincrement())
+  email         String    @unique
+  name          String
+  role          Role      @default(STUDENT)
+  avatarUrl     String?
+  phone         String?
+  memberId      String?   @unique
+  cardIssuedAt  DateTime?
+  cardExpiredAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  accounts      Account[]
-  sessions      Session[]
+  // Relations
+  articles             Article[]              @relation("AuthorArticles")
+  enrollments          Enrollment[]
+  progresses           Progress[]
+  franchises           FranchiseMember[]
+  FranchiseApplication FranchiseApplication[]
+  password             Password?
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  // ออเดอร์ของผู้ใช้
+  orders Order[]
+
+  @@index([email])
 }
 
-model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String?
-  access_token      String?
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String?
-  session_state     String?
+model Article {
+  id          Int           @id @default(autoincrement())
+  slug        String        @unique
+  title       String
+  summary     String?
+  content     String
+  coverImage  String?
+  status      ArticleStatus @default(DRAFT)
+  publishedAt DateTime?
 
+  author   User @relation("AuthorArticles", fields: [authorId], references: [id])
+  authorId Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Course {
+  id          Int     @id @default(autoincrement())
+  slug        String  @unique
+  title       String
+  subtitle    String?
+  description String?
+  thumbnail   String?
+  isPublished Boolean @default(false)
+  price       Int     @default(0)
+
+  sections    Section[]
+  enrollments Enrollment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isPublished])
+}
+
+model Section {
+  id       Int      @id @default(autoincrement())
+  title    String
+  order    Int      @default(0)
+  course   Course   @relation(fields: [courseId], references: [id])
+  courseId Int
+  lessons  Lesson[]
+}
+
+model Lesson {
+  id          Int     @id @default(autoincrement())
+  title       String
+  order       Int     @default(0)
+  content     String?
+  videoUrl    String?
+  freePreview Boolean @default(false)
+
+  section   Section @relation(fields: [sectionId], references: [id])
+  sectionId Int
+
+  progresses Progress[]
+}
+
+model Enrollment {
+  id        Int              @id @default(autoincrement())
+  status    EnrollmentStatus @default(ACTIVE)
+  user      User             @relation(fields: [userId], references: [id])
+  userId    Int
+  course    Course           @relation(fields: [courseId], references: [id])
+  courseId  Int
+  createdAt DateTime         @default(now())
+
+  // ผูกกับ Order (optional) — ถ้า Order ถูกลบ ให้เซ็ตเป็น NULL
+  order   Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  orderId Int?
+
+  @@unique([userId, courseId])
+  @@index([userId, status])
+  @@index([orderId])
+}
+
+model Progress {
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    Int
+  lesson    Lesson   @relation(fields: [lessonId], references: [id])
+  lessonId  Int
+  isDone    Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@unique([userId, lessonId])
+  @@index([userId, isDone])
+}
+
+/**
+ * ===== Franchise =====
+ */
+model Franchise {
+  id        Int             @id @default(autoincrement())
+  code      String          @unique
+  name      String
+  ownerName String?
+  email     String?
+  phone     String?
+  address   String?
+  status    FranchiseStatus @default(PENDING)
+  note      String?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  members      FranchiseMember[]
+  applications FranchiseApplication[]
+}
+
+model FranchiseMember {
+  id          Int       @id @default(autoincrement())
+  roleLabel   String?
+  user        User      @relation(fields: [userId], references: [id])
+  userId      Int
+  franchise   Franchise @relation(fields: [franchiseId], references: [id])
+  franchiseId Int
+  createdAt   DateTime  @default(now())
+
+  @@unique([userId, franchiseId])
+}
+
+model FranchiseApplication {
+  id          Int             @id @default(autoincrement())
+  franchise   Franchise       @relation(fields: [franchiseId], references: [id])
+  franchiseId Int
+  applicant   User?           @relation(fields: [applicantId], references: [id])
+  applicantId Int?
+  message     String?
+  status      FranchiseStatus @default(PENDING)
+  createdAt   DateTime        @default(now())
+}
+
+model Password {
+  userId Int    @id
+  hash   String @db.Text
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@unique([provider, providerAccountId])
 }
 
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
+/**
+ * ===== Order & Payment =====
+ */
+model Order {
+  id          Int         @id @default(autoincrement())
+  code        String      @unique
+  user        User        @relation(fields: [userId], references: [id])
+  userId      Int
+  amount      Int
+  currency    String      @default("THB")
+  status      OrderStatus @default(PENDING)
+  provider    String?
+  providerRef String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments    Payment[]
+  enrollments Enrollment[] // ผูกกับ Enrollment.orderId
+
+  @@index([userId, status])
+  @@map("orders")
 }
 
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
+model Payment {
+  id          Int      @id @default(autoincrement())
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId     Int
+  amount      Int
+  method      String // "card" | "qr" | "transfer"
+  status      String // "succeeded" | "failed" | "pending"
+  providerRef String?
+  createdAt   DateTime @default(now())
 
-  @@unique([identifier, token])
+  @@index([orderId])
+  @@map("payments")
 }
